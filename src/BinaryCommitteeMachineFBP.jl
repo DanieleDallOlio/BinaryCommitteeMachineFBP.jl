@@ -2,10 +2,8 @@
 
 module BinaryCommitteeMachineFBP
 
-export focusingBP, MagT64, MagP64,
        read_messages, write_messages,
        FocusingProtocol, StandardReinforcement, Scoping, PseudoReinforcement, FreeScoping
-
 using StatsFuns
 using GZip
 using ExtractMacro
@@ -93,28 +91,22 @@ function Messages{F<:Mag64}(::Type{F}, messages::Messages)
                        check=false)
 end
 
+
 function read_messages{F<:Mag64}(io::IO, ::Type{F})
     l = split(readline(io))
     length(l) == 2 && l[1] == "fmt:" || error("invalid messages file")
     fmt = Val{Symbol(l[2])}
     l = split(readline(io))
-    length(l) == 4 && l[1] == "N,K,M:" || error("invalid messgaes file")
-    N, K, M = parse(Int, l[2]), parse(Int, l[3]), parse(Int, l[4])
+    length(l) == 4 && l[1] == "N,M,K:" || error("invalid messgaes file")
+    N, M, K = parse(Int, l[2]), parse(Int, l[3]), parse(Int, l[4])
 
-    ux = [mflatp(F, N) for k = 1:K]
-    mw = [mflatp(F, N) for k = 1:K]
-    mτ1 = [mflatp(F, K) for a = 1:M]
-    uw = [[mflatp(F, N) for k = 1:K] for a = 1:M]
-    Uτ1 = [mflatp(F, K) for a = 1:M]
-    mτ2 = mflatp(F, M)
-    uτ1 = [mflatp(F, K) for a = 1:M]
-
-    expected_lines = K + M + M*K + M + 1 + M + K
-    for (i,l) in enumerate(eachline(io))
-        i > expected_lines && (strip(l) == "END" || error("invalid messages file"); break)
-        @readmagvec(l, fmt, ux, mw, mτ1, uw, Uτ1, mτ2, uτ1)
-    end
-    eof(io) || error("invalid messages file")
+    ux = [ F[ F(x) for x in map(float, split(readline(io)))] for k = 1:K]
+    mw = [ F[ F(x) for x in map(float, split(readline(io)))] for k = 1:K]
+    mτ1 = [ F[ F(x) for x in map(float, split(readline(io)))] for a = 1:M]
+    uw = [[ F[ F(x) for x in map(float, split(readline(io)))] for k = 1:K] for a = 1:M]
+    Uτ1 = [ F[ F(x) for x in map(float, split(readline(io)))] for a = 1:M]
+    mτ2 = F[ F(x) for x in map(float, split(readline(io)))]
+    uτ1 = [ F[ F(x) for x in map(float, split(readline(io)))] for a = 1:M]
     return Messages{F}(M, N, K, ux, mw, mτ1, uw, Uτ1, mτ2, uτ1, check=false)
 end
 
@@ -136,7 +128,7 @@ Writes messages to a file. The messages can be read back with [`read_messages`](
 is a plain text file compressed with gzip.
 """
 function write_messages(filename::AbstractString, messages::Messages)
-    gzopen(filename, "w") do f
+    open(filename, "w") do f
         write_messages(f, messages)
     end
 end
@@ -145,9 +137,8 @@ function write_messages{F<:Mag64}(io::IO, messages::Messages{F})
     @extract messages : N K M ux mw mτ1 uw Uτ1 mτ2 uτ1
 
     println(io, "fmt: ", magformat(F))
-    println(io, "N,K,M: $N $K $M")
+    println(io, "N,M,K: $N $M $K")
     @dumpmagvecs(io, ux, mw, mτ1, uw, Uτ1, mτ2, uτ1)
-    println(io, "END")
 end
 
 Base.eltype{F<:Mag64}(messages::Messages{F}) = F
@@ -272,17 +263,18 @@ optionally be gzipped.
 """
 function Patterns(patternsfile::AbstractString)
     X = Vec[]
+    o = Vec[]
     N = 0
     M = 0
     gzopen(patternsfile) do f
         M = 0
+        push!(o,map(float, split(readline(f))))
         for l in eachline(f)
             push!(X, map(float, split(l)))
             M += 1
         end
     end
-    o = Int[1.0 for a = 1:M]
-
+    o = o[1]
     return Patterns(X,o)
 end
 
@@ -301,6 +293,7 @@ function computeσ²(w::Vec, ξ::Vec)
     end
     return σ²
 end
+
 
 computeσ(σ²::Float64) = √(2σ²)
 computeσ(w::Vec) = √(2computeσ²(w))
@@ -383,11 +376,9 @@ let hsT = Dict{Int,MagVec{MagT64}}(), hsP = Dict{Int,MagVec{MagP64}}(), vhs = Di
     global theta_node_update_accurate!
     function theta_node_update_accurate!{F<:Mag64}(m::MagVec{F}, M::F, ξ::Vec, u::MagVec{F}, U::F, params::Params)
         @extract params : λ=damping
-
         N = length(m)
         h::MagVec{F} = geth(F, N)
         vh = Base.@get!(vhs, N, Array{Float64}(N))
-
         subfield!(h, m, u)
         H = M ⊘ U
 
@@ -400,11 +391,9 @@ let hsT = Dict{Int,MagVec{MagT64}}(), hsP = Dict{Int,MagVec{MagP64}}(), vhs = Di
 
         dσ² = 2σ²
         newU = merf(F, μ / √dσ²)
-
         maxdiff = 0.0
         U = damp(newU, U, λ)
         M = H ⊗ U
-
         @inbounds for i = 1:N
             ξi = ξ[i]
             hi = vh[i]
@@ -476,14 +465,13 @@ let hsT = Dict{Int,MagVec{MagT64}}(), hsP = Dict{Int,MagVec{MagP64}}(), vhs = Di
         @assert isfinite(newU)
 
         maxdiff = 0.0
+
         U = damp(newU, U, λ)
         newM = H ⊗ U
         M = newM
-
         @assert isfinite(newM) (H, U)
 
         u1 = ones(1)
-
         @inbounds for i = 1:N
             ξi = ξ[i]
             @assert ξi^2 == 1
@@ -511,11 +499,9 @@ let hsT = Dict{Int,MagVec{MagT64}}(), hsP = Dict{Int,MagVec{MagP64}}(), vhs = Di
             mp = convert(F, clamp(pp + ξi * pz - pm, -1.0, 1.0))
             mm = convert(F, clamp(pp - ξi * pz - pm, -1.0, 1.0))
             newu = exactmix(H, mp, mm)
-
             maxdiff = max(maxdiff, abs(newu - u[i]))
             u[i] = damp(newu, u[i], λ)
             m[i] = h[i] ⊗ u[i]
-
             @assert isfinite(u[i]) (u[i],)
         end
         return maxdiff, U, M
@@ -616,7 +602,6 @@ end
 
 function entro_node_update{F<:Mag64}(m::F, u::F, params::Params{F})
     @extract params : λ=damping r pol
-
     h = m ⊘ u
     if r == 0 || pol == 0
         newu = zero(F)
@@ -629,7 +614,6 @@ function entro_node_update{F<:Mag64}(m::F, u::F, params::Params{F})
     diff = abs(newu - u)
     newu = damp(newu, u, λ)
     newm = h ⊗ newu
-
     return diff, newu, newm
 end
 
@@ -638,6 +622,7 @@ function iterate!{F<:Mag64}(messages::Messages{F}, patterns::Patterns, params::P
     @extract patterns : X output
     @extract params   : accuracy1 accuracy2
     maxdiff = 0.0
+
     tnu1! = accuracy1 == :exact ? theta_node_update_exact! :
             accuracy1 == :accurate ? theta_node_update_accurate! :
             accuracy1 == :none ? theta_node_update_approx! :
@@ -646,7 +631,7 @@ function iterate!{F<:Mag64}(messages::Messages{F}, patterns::Patterns, params::P
             accuracy2 == :accurate ? theta_node_update_accurate! :
             accuracy2 == :none ? theta_node_update_approx! :
             error("accuracy must be one of :exact, :accurate, :none (was given $accuracy)")
-    for a = randperm(M + N*K)
+    for a = 1:(M + N*K)
         if a ≤ M
             ξ = X[a]
             for k = 1:K
@@ -670,13 +655,11 @@ end
 
 function converge!(messages::Messages, patterns::Patterns, params::Params)
     @extract params : ϵ max_iters λ₀=damping quiet
-
     λ = λ₀
     ok = false
     strl = 0
     t = @elapsed for it = 1:max_iters
         diff = iterate!(messages, patterns, params)
-
         if !quiet
             str = "[it=$it Δ=$diff λ=$λ]"
             print("\r", " "^strl, "\r", str)
@@ -752,7 +735,6 @@ function free_energy{F<:Mag64}(messages::Messages{F}, patterns::Patterns, params
         mx = hpol ↑ (r + 1)
         f += mcrossentropy(mx, hpol)
     end
-
     return f / (N * K)
 end
 
@@ -894,7 +876,7 @@ where `ρ` is taken from the given range(s) `r`. With `x=0`, this is basically t
 
 Shorthand for [`PseudoReinforcement`](@ref)`(0:dr:(1-dr); x=x)`.
 """
-PseudoReinforcement(dr::Float64; x::Real=0.5) = PseudoReinforcement(0.0:dr:(1-dr), x=x)
+PseudoReinforcement(dr::Float64; x::Real=0.5) = PseudoReinforcement(0.0:dr:1, x=x)
 
 Base.start(s::PseudoReinforcement) = start(s.r)
 function Base.next(s::PseudoReinforcement, i)
@@ -1009,15 +991,15 @@ function focusingBP(N::Integer, K::Integer,
                     initpatt::Union{AbstractString, Tuple{Vec2,Vec}, Real, Patterns};
 
                     max_iters::Integer = 1000,
-                    max_steps::Integer = typemax(Int),
-                    seed::Integer = 1,
-                    damping::Real = 0.0,
+                    max_steps::Integer = 101,
+                    seed::Integer = 135,
+                    damping::Real = 0.5,
                     quiet::Bool = false,
-                    accuracy1::Symbol = :accurate,
+                    accuracy1::Symbol = :exact,
                     accuracy2::Symbol = :exact,
-                    randfact::Real = 0.01,
-                    fprotocol::FocusingProtocol = StandardReinforcement(1e-2),
-                    ϵ::Real = 1e-3,
+                    randfact::Real = 0.1,
+                    fprotocol::FocusingProtocol = PseudoReinforcement(1e-2),
+                    ϵ::Real = 0.1,
                     messfmt::Symbol = :tanh,
                     initmess::Union{Messages,Void,AbstractString} = nothing,
                     outatzero::Bool = true,
@@ -1048,7 +1030,6 @@ function focusingBP(N::Integer, K::Integer,
         initpatt ≥ 0 || throw(ArgumentError("invalide negative initpatt; given: $initpatt"))
         initpatt = (N, round(Int, K * N * initpatt))
     end
-
     patterns = Patterns(initpatt)
 
     M = patterns.M
@@ -1097,6 +1078,13 @@ function focusingBP(N::Integer, K::Integer,
         !quiet && K > 1 && (println("mags overlaps="); display(mags_symmetry(messages)[1]); println())
         errs = nonbayes_test(messages, patterns)
 
+        S = compute_S(messages, params)
+        q = compute_q(messages)
+        q̃ = compute_q̃(messages, params)
+        βF = free_energy(messages, patterns, params)
+        Σint = -βF - γ * S
+
+        println("it=$it pol=$pol y=$y β=$β (ok=$ok) S=$S βF=$βF Σᵢ=$Σint q=$q q̃=$q̃ Ẽ=$errs")
         if writeoutfile == :always || (writeoutfile == :auto && !outatzero)
             S = compute_S(messages, params)
             q = compute_q(messages)
@@ -1116,12 +1104,20 @@ function focusingBP(N::Integer, K::Integer,
             end
         else
             !quiet && println("it=$it pol=$pol y=$y β=$β (ok=$ok) Ẽ=$errs")
-            errs == 0 && return 0, messages, patterns
+            if errs == 0
+                if outmessfiletmpl ≢ nothing
+                    write_messages(outmessfiletmpl, messages)
+                end
+                return 0, messages, patterns
+            end
         end
         it += 1
         it ≥ max_steps && break
     end
-    return errs, messages, patterns
+    write_messages(outmessfiletmpl, messages)
+    return
+end
+
 end
 
 end # module

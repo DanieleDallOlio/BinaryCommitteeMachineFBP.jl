@@ -4,7 +4,7 @@ module Magnetizations
 
 export Mag64, MagT64, MagP64, mfill, mflatp, mrand, damp, reinforce, ⊗, ⊘, ↑, sign0,
        merf, exactmix, erfmix, mtanh, log1pxy, mcrossentropy,
-       logZ, forcedmag, showinner, parseinner, magformat
+       logZ, forcedmag, showinner, parseinner, magformat, m2f, f2m
 
 VERSION >= v"0.6.0-dev.2767" && using SpecialFunctions
 using Compat
@@ -15,15 +15,24 @@ import Base: convert, promote_rule, *, /, +, -, sign, signbit, isnan,
 
 @compat abstract type Mag64 end
 
-m2f(a::Mag64) = reinterpret(Float64, a)
-f2m{F<:Mag64}(::Type{F}, a::Float64) = reinterpret(F, a)
-
-convert{T<:Real}(::Type{T}, y::Mag64) = convert(T, Float64(y))
-convert{F<:Mag64}(::Type{F}, y::Real) = convert(F, Float64(y))
-
-convert{F<:Mag64}(::Type{F}, x::F) = x
-convert{F<:Mag64}(::Type{F}, x::Mag64) = F(Float64(x))
-
+function m2f(a::Mag64)
+    return reinterpret(Float64, a)
+end
+function f2m{F<:Mag64}(::Type{F}, a::Float64)
+    return reinterpret(F, a)
+end
+function convert{T<:Real}(::Type{T}, y::Mag64)
+    return convert(T, Float64(y))
+end
+function convert{F<:Mag64}(::Type{F}, y::Real)
+    return convert(F, Float64(y))
+end
+function convert{F<:Mag64}(::Type{F}, x::F)
+    return x
+end
+function convert{F<:Mag64}(::Type{F}, x::Mag64)
+    return F(Float64(x))
+end
 Mag64{F<:Mag64}(::Type{F}, pp::Real, pm::Real) = F(pp, pm)
 
 promote_rule{F<:Mag64}(::Type{F}, ::Type{Float64}) = Float64

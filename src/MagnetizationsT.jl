@@ -4,8 +4,9 @@ using StatsFuns
 
 @compat primitive type MagT64 <: Mag64 64 end
 
-f2mT(a::Float64) = f2m(MagT64, a)
-
+function f2mT(a::Float64)
+    return f2m(MagT64, a)
+end
 include("AtanhErf.jl")
 using .AtanhErf
 
@@ -14,9 +15,12 @@ const mInf = 30.0
 magformat(::Type{MagT64}) = :tanh
 parseinner(::Type{Val{:tanh}}, s::AbstractString) = mtanh(MagT64, parse(Float64, s))
 
-convert(::Type{MagT64}, y::Float64) = f2mT(clamp(atanh(y), -mInf, mInf))
-convert(::Type{Float64}, y::MagT64) = tanh(m2f(y))
-
+function convert(::Type{MagT64}, y::Float64)
+    return f2mT(clamp(atanh(y), -mInf, mInf))
+end
+function convert(::Type{Float64}, y::MagT64)
+    return tanh(m2f(y))
+end
 forcedmag(::Type{MagT64}, y::Float64) = f2mT(atanh(y))
 
 mtanh(::Type{MagT64}, x::Float64) = f2mT(x)
@@ -35,7 +39,7 @@ end
 
 reinforce(m0::MagT64, γ::Float64) = f2mT(m2f(m0) * γ)
 
-damp(newx::MagT64, oldx::MagT64, λ::Float64) = f2mT(m2f(newx) * (1 - λ) + m2f(oldx) * λ)
+damp(newx::MagT64, oldx::MagT64, λ::Float64) = MagT64(Float64(newx) * (1 - λ) + Float64(oldx) * λ)
 
 lr(x::Float64) = log1p(exp(-2abs(x)))
 log2cosh(x::Float64) = abs(x) + lr(x)
@@ -69,7 +73,6 @@ function auxmix(H::MagT64, a₊::Float64, a₋::Float64)
 
     xH₊ = aH + a₊
     xH₋ = aH + a₋
-
     # we need to compute
     #   t1 = abs(xH₊) - abs(a₊) - abs(xH₋) + abs(a₋)
     #   t2 = lr(xH₊) - lr(a₊) - lr(xH₋) + lr(a₋)
@@ -95,7 +98,7 @@ function auxmix(H::MagT64, a₊::Float64, a₋::Float64)
                 t2 = 0.0
             end
         else # isinf(a₊) && isinf(a₋)
-            if (sign(a₊) == sign(aH) && sign(a₊) == sign(aH)) || (sign(a₊) ≠ sign(aH) && sign(a₊) ≠ sign(aH))
+            if (sign(a₊) == sign(aH) && sign(a₋) == sign(aH)) || (sign(a₊) ≠ sign(aH) && sign(a₋) ≠ sign(aH))
                 t1 = 0.0
                 t2 = 0.0
             elseif sign(a₊) == sign(aH) # && sign(a₋) ≠ sign(aH)
@@ -112,7 +115,6 @@ function auxmix(H::MagT64, a₊::Float64, a₋::Float64)
         t1 -= isinf(a₋) ? 0.0 : abs(xH₋) - abs(a₋)
         t2 = lr(xH₊) - lr(a₊) - lr(xH₋) + lr(a₋)
     end
-
     return f2mT((t1 + t2) / 2)
 end
 
@@ -162,6 +164,7 @@ function logZ(u0::MagT64, u::Vector{MagT64})
         s1 = s2 = s3 = 0.0
         hasinf = sign(a0)
     end
+
     for ui in u
         ai = m2f(ui)
         if !isinf(ai)
