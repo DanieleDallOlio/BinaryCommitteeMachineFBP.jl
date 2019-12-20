@@ -129,8 +129,10 @@ function _dumpmagvec{T<:Array}(io::IO, a::Array{T}, s::AbstractString)
     end
 end
 function _dumpmagvec(io::IO, a::Array, s::AbstractString)
+    #print(io, s)
     for x in a
         @printf(io, "%0.5f", Float64(x))
+        # showinner(io, x)
         print(io, ' ')
     end
     println(io)

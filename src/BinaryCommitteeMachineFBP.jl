@@ -2,8 +2,11 @@
 
 module BinaryCommitteeMachineFBP
 
+export focusingBP, MagT64, MagP64,
        read_messages, write_messages,
        FocusingProtocol, StandardReinforcement, Scoping, PseudoReinforcement, FreeScoping
+include("AtanhErf.jl")
+using .AtanhErf
 using StatsFuns
 using GZip
 using ExtractMacro
@@ -107,6 +110,22 @@ function read_messages{F<:Mag64}(io::IO, ::Type{F})
     Uτ1 = [ F[ F(x) for x in map(float, split(readline(io)))] for a = 1:M]
     mτ2 = F[ F(x) for x in map(float, split(readline(io)))]
     uτ1 = [ F[ F(x) for x in map(float, split(readline(io)))] for a = 1:M]
+
+    # ux = [mflatp(F, N) for k = 1:K]
+    # mw = [mflatp(F, N) for k = 1:K]
+    # mτ1 = [mflatp(F, K) for a = 1:M]
+    # uw = [[mflatp(F, N) for k = 1:K] for a = 1:M]
+    # Uτ1 = [mflatp(F, K) for a = 1:M]
+    # mτ2 = mflatp(F, M)
+    # uτ1 = [mflatp(F, K) for a = 1:M]
+    #
+    # expected_lines = K + M + M*K + M + 1 + M + K
+    # for (i,l) in enumerate(eachline(io))
+    #     println("$i")
+    #     i > expected_lines && (strip(l) == "END" || error("invalid messages file"); break)
+    #     @readmagvec(l, fmt, ux, mw, mτ1, uw, Uτ1, mτ2, uτ1)
+    # end
+    # eof(io) || error("invalid messages file")
     return Messages{F}(M, N, K, ux, mw, mτ1, uw, Uτ1, mτ2, uτ1, check=false)
 end
 
@@ -139,6 +158,7 @@ function write_messages{F<:Mag64}(io::IO, messages::Messages{F})
     println(io, "fmt: ", magformat(F))
     println(io, "N,M,K: $N $M $K")
     @dumpmagvecs(io, ux, mw, mτ1, uw, Uτ1, mτ2, uτ1)
+    # println(io, "END")
 end
 
 Base.eltype{F<:Mag64}(messages::Messages{F}) = F
@@ -274,6 +294,7 @@ function Patterns(patternsfile::AbstractString)
             M += 1
         end
     end
+    #o = Int[1.0 for a = 1:M]
     o = o[1]
     return Patterns(X,o)
 end
@@ -294,6 +315,10 @@ function computeσ²(w::Vec, ξ::Vec)
     return σ²
 end
 
+global check = 0.0;
+global a_check = 0.0;
+global done_check = 0.0;
+global it_check = 0.0;
 
 computeσ(σ²::Float64) = √(2σ²)
 computeσ(w::Vec) = √(2computeσ²(w))
@@ -376,6 +401,10 @@ let hsT = Dict{Int,MagVec{MagT64}}(), hsP = Dict{Int,MagVec{MagP64}}(), vhs = Di
     global theta_node_update_accurate!
     function theta_node_update_accurate!{F<:Mag64}(m::MagVec{F}, M::F, ξ::Vec, u::MagVec{F}, U::F, params::Params)
         @extract params : λ=damping
+        # global check
+        global a_check
+        global done_check
+        # global it_check
         N = length(m)
         h::MagVec{F} = geth(F, N)
         vh = Base.@get!(vhs, N, Array{Float64}(N))
@@ -390,11 +419,17 @@ let hsT = Dict{Int,MagVec{MagT64}}(), hsP = Dict{Int,MagVec{MagP64}}(), vhs = Di
         μ = dot(vh, ξ)
 
         dσ² = 2σ²
+        # println("$(vh[1])")
         newU = merf(F, μ / √dσ²)
+        # println("μ $μ")
+        # println("σ² $σ²")
         maxdiff = 0.0
         U = damp(newU, U, λ)
         M = H ⊗ U
+        # println("U $(m2f(U)) $U")
+        # println("M $(m2f(M)) $M")
         @inbounds for i = 1:N
+            # println("i $i")
             ξi = ξ[i]
             hi = vh[i]
             μ̄ = μ - ξi * hi
@@ -404,8 +439,61 @@ let hsT = Dict{Int,MagVec{MagT64}}(), hsP = Dict{Int,MagVec{MagP64}}(), vhs = Di
             m₋ = (μ̄ - ξi) / sdσ̄²
             newu = erfmix(H, m₊, m₋)
             maxdiff = max(maxdiff, abs(newu - u[i]))
+            # done_check==1. && println("H $(m2f(H)) $H")
+            # done_check==1. && println("mu $μ")
+            # done_check==1. && println("tmp $sdσ̄²")
+            # done_check==1. && println("h[i] $hi")
+            # done_check==1. && println("xi[i] $ξi")
+            # done_check==1. && println("mp $m₊")
+            # done_check==1. && println("mm $m₋")
+            # done_check==1. && println("ap $(atanherf(m₊))")
+            # done_check==1. && println("am $(atanherf(m₋))")
+            # done_check==1. && println("newu $(m2f(newu)) $newu")
+            # done_check==1. && println("u[i] $(m2f(u[i])) $(u[i])")
+            # done_check==1. && println("damp $(m2f(newu) * (1 - λ) + m2f(u[i]) * λ)")
+            # done_check==1. && println("damp_a $(m2f(newu) * (1 - λ))")
+            # done_check==1. && println("damp_b $(m2f(u[i]) * λ)")
+            # done_check==1. && println("damp_ca $(m2f(newu)) $newu")
+            # done_check==1. && println("atanh $(atanh(newu))")
+            # done_check==1. && println("damp_cb $((1 - λ))")
+            # if it_check==9 && check == 1 && a_check ==35 && done_check==1
+            #     println("i = $i")
+            #     println("$(u[i]) $(m[i])")
+            #     println("$H $m₊ $m₋")
+            #     println("$newu")
+            #     @assert !isnan(maxdiff)
+            # end
+            # if it_check == 7 && check == 1 && a_check ==35 && done_check==1
+            #     println("In")
+            #     println("$(u[i]) $(m[i])")
+            #     println("$newu")
+            # end
+            # if it_check==3 && a_check==35
+            #     println("i = $i nm = $N")
+            # end
+            # if check==6 && a_check==35 && done_check ==1 #&& i<2
+            #     println("i = $i nm = $N")
+            #     println("In")
+            #     println("$H $m₊ $m₋")
+            #     println("$newu")
+            #     ppp = atanherf(m₊)
+            #     mmm = atanherf(m₋)
+            #     println("$ppp $mmm")
+            #     println("$(u[i]) $(m[i])")
+            # end
             u[i] = damp(newu, u[i], λ)
+            # done_check==1. && println("u[i] $(m2f(u[i])) $(u[i])")
             m[i] = h[i] ⊗ u[i]
+            # if it_check == 7 && check == 1 && a_check ==35 && done_check==1
+            #     println("Out")
+            #     println("$(u[i]) $(h[i]) $(m[i])")
+            #     # return maxdiff, U, M
+            # end
+            # if check==6 && a_check==35 && done_check ==1 && i<2
+            #     println("Out")
+            #     println("$(u[i]) $(m[i])")
+            #     # return maxdiff, U, M
+            # end
         end
         return maxdiff, U, M
     end
@@ -602,6 +690,8 @@ end
 
 function entro_node_update{F<:Mag64}(m::F, u::F, params::Params{F})
     @extract params : λ=damping r pol
+    global check
+    global a_check
     h = m ⊘ u
     if r == 0 || pol == 0
         newu = zero(F)
@@ -611,9 +701,21 @@ function entro_node_update{F<:Mag64}(m::F, u::F, params::Params{F})
         newu::F = ((h * pol) ↑ r) * pol
     end
 
+    # if check == 588 && a_check ==499
+    #     println("\n$h")
+    #     println("$m $u")
+    #     println("$r $pol")
+    #     println("newu $newu")
+    # end
     diff = abs(newu - u)
     newu = damp(newu, u, λ)
+    # println("$(m2f(newu)) $newu")
     newm = h ⊗ newu
+    # if check == 588 && a_check ==499
+    #     if check == 588 && a_check ==499
+    #         println("newu $newu")
+    #     end
+    # end
     return diff, newu, newm
 end
 
@@ -631,15 +733,39 @@ function iterate!{F<:Mag64}(messages::Messages{F}, patterns::Patterns, params::P
             accuracy2 == :accurate ? theta_node_update_accurate! :
             accuracy2 == :none ? theta_node_update_approx! :
             error("accuracy must be one of :exact, :accurate, :none (was given $accuracy)")
+    global check
+    global done_check
+    global a_check
+    global it_check
+    # for a = randperm(M + N*K)
+    done_check = 0
     for a = 1:(M + N*K)
+        done_check = 0.0
+        a_check = a
         if a ≤ M
             ξ = X[a]
             for k = 1:K
+                # if it_check==9 && check == 1
+                #     println("a = $a \nk = $k")
+                # end
                 diff, Uτ1[a][k], mτ1[a][k] = tnu1!(mw[k], mτ1[a][k], ξ, uw[a][k], Uτ1[a][k], params)
                 maxdiff = max(maxdiff, diff)
+                # @assert !isnan(maxdiff)
             end
+            done_check = 1
+            # if it_check==9 && check == 1
+            #     println("loop done")
+            # end
             diff, _, mτ2[a] = tnu2!(mτ1[a], mτ2[a], ones(K), uτ1[a], zero(F), params)
             maxdiff = max(maxdiff, diff)
+            # @assert !isnan(maxdiff)
+            # if it_check==9 && check == 1
+            #     println("a = $a done")
+            # end
+            # if check==6 && a_check ==35
+            #     println(" $a")
+            #     # return maxdiff
+            # end
         else
             (params.r == 0 || params.pol == 0.0) && continue
             j = a - M
@@ -648,18 +774,37 @@ function iterate!{F<:Mag64}(messages::Messages{F}, patterns::Patterns, params::P
 
             diff, ux[k][i], mw[k][i] = entro_node_update(mw[k][i], ux[k][i], params)
             maxdiff = max(diff, maxdiff)
+            # if it_check==9 && check == 1
+            #     println("$a star")
+            # end
+            # @assert !isnan(maxdiff)
+            # if (it_check==2) && (a>100)
+            #     println("Exit..")
+            #      return maxdiff
+            # end
         end
+        # if check==588 && a==499
+        #     return maxdiff
+        # end
+        # println("$a")
+        # (a == 1) && return maxdiff
     end
     return maxdiff
 end
 
 function converge!(messages::Messages, patterns::Patterns, params::Params)
     @extract params : ϵ max_iters λ₀=damping quiet
+    global check
+    # global it_check
     λ = λ₀
     ok = false
     strl = 0
     t = @elapsed for it = 1:max_iters
+        check = it
         diff = iterate!(messages, patterns, params)
+        # if it_check==9 && check == 1
+        #     println("it = $it")
+        # end
         if !quiet
             str = "[it=$it Δ=$diff λ=$λ]"
             print("\r", " "^strl, "\r", str)
@@ -667,6 +812,10 @@ function converge!(messages::Messages, patterns::Patterns, params::Params)
             #println(str)
             flush(STDOUT)
             strl = length(str)
+            # if it_check==9 && check == 1
+            #     println("Out")
+            #     return ok
+            # end
         end
         if diff < ϵ
             ok = true
@@ -876,6 +1025,7 @@ where `ρ` is taken from the given range(s) `r`. With `x=0`, this is basically t
 
 Shorthand for [`PseudoReinforcement`](@ref)`(0:dr:(1-dr); x=x)`.
 """
+# PseudoReinforcement(dr::Float64; x::Real=0.5) = PseudoReinforcement(0.0:dr:(1-dr), x=x)
 PseudoReinforcement(dr::Float64; x::Real=0.5) = PseudoReinforcement(0.0:dr:1, x=x)
 
 Base.start(s::PseudoReinforcement) = start(s.r)
@@ -1066,6 +1216,7 @@ function focusingBP(N::Integer, K::Integer,
     end
     !quiet && K > 1 && (println("mags overlaps="); display(mags_symmetry(messages)[1]); println())
 
+    global it_check
     it = 1
     for (γ,y,β) in fprotocol
         isfinite(β) && error("finite β not yet supported; given: $β")
@@ -1073,8 +1224,10 @@ function focusingBP(N::Integer, K::Integer,
         params.pol = pol
         params.r = y - 1
         params.β = β
+        it_check = it
         set_outfields!(messages, patterns.output, params.β)
         ok = converge!(messages, patterns, params)
+        # write_messages(string("/mnt/c/Users/danie/Desktop/Tesi/test_mess/mess_check_julia",it+201,".txt"), messages)
         !quiet && K > 1 && (println("mags overlaps="); display(mags_symmetry(messages)[1]); println())
         errs = nonbayes_test(messages, patterns)
 
@@ -1085,6 +1238,9 @@ function focusingBP(N::Integer, K::Integer,
         Σint = -βF - γ * S
 
         println("it=$it pol=$pol y=$y β=$β (ok=$ok) S=$S βF=$βF Σᵢ=$Σint q=$q q̃=$q̃ Ẽ=$errs")
+        # if it_check == 5
+        #     return
+        # end
         if writeoutfile == :always || (writeoutfile == :auto && !outatzero)
             S = compute_S(messages, params)
             q = compute_q(messages)
@@ -1115,9 +1271,27 @@ function focusingBP(N::Integer, K::Integer,
         it ≥ max_steps && break
     end
     write_messages(outmessfiletmpl, messages)
+    # return errs, messages, patterns
     return
 end
 
+function test_everything()
+    # println("$(m2f(f2m(MagT64,1.) * f2m(MagT64,0.5)))")
+    a = f2m(MagT64,31.)
+    println("31 done")
+    a = f2m(MagT64,-31.)
+    println("-31 done")
+    a = f2m(MagT64,-1.)
+    println("-1 done")
+    a = f2m(MagT64,1.)
+    println("1 done")
+    b = m2f( f2m(MagT64, 1.) )
+    println("b done $b")
+    c = MagT64(b)
+    println("c done")
+    u = damp(f2m(MagT64,1.0), f2m(MagT64,0.0), 0.98)
+    println("damp $(m2f(f2m(MagT64,1.0)))")
+return
 end
 
 end # module

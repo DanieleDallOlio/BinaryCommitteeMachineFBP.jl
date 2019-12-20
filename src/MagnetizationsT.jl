@@ -5,6 +5,7 @@ using StatsFuns
 @compat primitive type MagT64 <: Mag64 64 end
 
 function f2mT(a::Float64)
+    # println("f2mT(a::Float64)")
     return f2m(MagT64, a)
 end
 include("AtanhErf.jl")
@@ -16,9 +17,11 @@ magformat(::Type{MagT64}) = :tanh
 parseinner(::Type{Val{:tanh}}, s::AbstractString) = mtanh(MagT64, parse(Float64, s))
 
 function convert(::Type{MagT64}, y::Float64)
+    # println("convert(::Type{MagT64}, y::Float64)")
     return f2mT(clamp(atanh(y), -mInf, mInf))
 end
 function convert(::Type{Float64}, y::MagT64)
+    # println("convert(::Type{Float64}, y::MagT64)")
     return tanh(m2f(y))
 end
 forcedmag(::Type{MagT64}, y::Float64) = f2mT(atanh(y))
@@ -34,11 +37,13 @@ isfinite(a::MagT64) = !isnan(m2f(a))
 function ⊘(a::MagT64, b::MagT64)
     xa = m2f(a)
     xb = m2f(b)
+    # println("$(m2f(a)) $(m2f(b))")
     return f2mT(ifelse(xa == xb, 0.0, xa - xb))
 end
 
 reinforce(m0::MagT64, γ::Float64) = f2mT(m2f(m0) * γ)
 
+# damp(newx::MagT64, oldx::MagT64, λ::Float64) = f2mT(m2f(newx) * (1 - λ) + m2f(oldx) * λ)
 damp(newx::MagT64, oldx::MagT64, λ::Float64) = MagT64(Float64(newx) * (1 - λ) + Float64(oldx) * λ)
 
 lr(x::Float64) = log1p(exp(-2abs(x)))
@@ -98,6 +103,7 @@ function auxmix(H::MagT64, a₊::Float64, a₋::Float64)
                 t2 = 0.0
             end
         else # isinf(a₊) && isinf(a₋)
+            # if (sign(a₊) == sign(aH) && sign(a₊) == sign(aH)) || (sign(a₊) ≠ sign(aH) && sign(a₊) ≠ sign(aH)) ERRORE?!?!?!
             if (sign(a₊) == sign(aH) && sign(a₋) == sign(aH)) || (sign(a₊) ≠ sign(aH) && sign(a₋) ≠ sign(aH))
                 t1 = 0.0
                 t2 = 0.0

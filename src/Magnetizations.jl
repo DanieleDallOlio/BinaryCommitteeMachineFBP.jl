@@ -16,21 +16,27 @@ import Base: convert, promote_rule, *, /, +, -, sign, signbit, isnan,
 @compat abstract type Mag64 end
 
 function m2f(a::Mag64)
+    # println("m2f")
     return reinterpret(Float64, a)
 end
 function f2m{F<:Mag64}(::Type{F}, a::Float64)
+    # println("f2m")
     return reinterpret(F, a)
 end
 function convert{T<:Real}(::Type{T}, y::Mag64)
+    # println("convert{T<:Real}(::Type{T}, y::Mag64)")
     return convert(T, Float64(y))
 end
 function convert{F<:Mag64}(::Type{F}, y::Real)
+    # println("convert{F<:Mag64}(::Type{F}, y::Real)")
     return convert(F, Float64(y))
 end
 function convert{F<:Mag64}(::Type{F}, x::F)
+    # println("convert{F<:Mag64}(::Type{F}, x::F)")
     return x
 end
 function convert{F<:Mag64}(::Type{F}, x::Mag64)
+    # println("convert{F<:Mag64}(::Type{F}, x::Mag64)")
     return F(Float64(x))
 end
 Mag64{F<:Mag64}(::Type{F}, pp::Real, pm::Real) = F(pp, pm)
